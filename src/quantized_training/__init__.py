@@ -15,6 +15,7 @@ from .histogram import *
 from .quantize_pt2e import fuse_quantize_dequantize_with_previous_op
 from .codegen.mapping import rename_gemm_nodes
 from google.protobuf import text_format
+from google.protobuf import json_format
 import operator
 import torch.nn as nn
 import torch.nn.functional as F
@@ -122,14 +123,14 @@ def transform(
     ShapeProp(model).propagate(*flatten_args)
 
     # Turn batched matmul into multiple matmuls
-    split_multi_head_attention(model)
+    # split_multi_head_attention(model)
 
     # Convert torch.expand to memory copy
     convert_expand_to_memory_copy(model)
 
     # Perform transformations to the model
-    convert_cat_and_stack_as_stack_on_dim0(model)
-    convert_cat_with_mismatched_shapes_to_stack(model)
+    # convert_cat_and_stack_as_stack_on_dim0(model)
+    # convert_cat_with_mismatched_shapes_to_stack(model)
 
     if perform_tiling:
         run_tiling(model, cache_size, num_banks, block_size)
@@ -155,10 +156,10 @@ def transform(
         eliminate_reshape_with_no_effect(model)
 
     # Move quantize and dequantize ops to the end of last compute op
-    fuse_quantize_dequantize_with_previous_op(model)
+    #fuse_quantize_dequantize_with_previous_op(model)
 
-    if fuse_operator:
-        fuse(model, patterns, flatten_args)
+    #if fuse_operator:
+    #    fuse(model, patterns, flatten_args)
 
     rename_gemm_nodes(model)
 
@@ -194,6 +195,9 @@ def compile(
 
     with open(os.path.join(output_dir, 'model.txt'), "w") as f:
         f.write(text_format.MessageToString(model_params))
+
+    with open(os.path.join(output_dir, 'model.json'), "w") as f:
+        f.write(json_format.MessageToJson(model_params))
 
     operations = [
         op.op.name if op.WhichOneof('op_type') == 'op' else op.fused_op.name
