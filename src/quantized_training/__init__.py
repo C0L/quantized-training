@@ -159,8 +159,8 @@ def transform(
     # Move quantize and dequantize ops to the end of last compute op
     #fuse_quantize_dequantize_with_previous_op(model)
 
-    #if fuse_operator:
-    #    fuse(model, patterns, flatten_args)
+    # if fuse_operator:
+    #     fuse(model, patterns, flatten_args)
 
     rename_gemm_nodes(model)
 
@@ -181,22 +181,23 @@ def compile(
 
     ShapeProp(model).propagate(*flatten_args)
 
-    allocator = MemoryAllocator(total_memory, bank_width, bank_size)
-    run_memory_mapping(model, allocator, cache_size, bank_size, bank_width)
+    # allocator = MemoryAllocator(total_memory, bank_width, bank_size)
+    # run_memory_mapping(model, allocator, cache_size, bank_size, bank_width)
 
     if dump_snapshop:
         os.makedirs(output_dir, exist_ok=True)
         allocator.dump_snapshots(os.path.join(output_dir, "memory_snapshots.png"))
 
     params = gen_code(
-        model, flatten_args, os.path.join(output_dir, "tensor_files")
+        model, flatten_args, None 
+        # model, flatten_args, os.path.join(output_dir, "tensor_files")
     )
 
     with open(os.path.join(output_dir, 'model.txt'), "w") as f:
         f.write(text_format.MessageToString(params))
 
     with open(os.path.join(output_dir, 'model.json'), "w") as f:
-        f.write(json_format.MessageToJson(model_params))
+        f.write(json_format.MessageToJson(params))
 
     operations = [
         op.op.name if op.WhichOneof('op_type') == 'op' else op.fused_op.name
@@ -207,3 +208,5 @@ def compile(
         f.write('\n'.join(operations))
 
     gen_compute_graph(model, os.path.join(output_dir, output_file))
+
+    gen_operator_graph(model, os.path.join(output_dir, 'op_graph.json'))

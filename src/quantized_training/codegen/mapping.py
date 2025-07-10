@@ -7,6 +7,7 @@ import os
 import re
 from collections import defaultdict
 from typing import List, Dict, Callable
+import json
 
 import graphviz
 import torch
@@ -1328,6 +1329,81 @@ def gen_code(model, args, output_dir=None):
 
     return model_params
 
+
+def gen_operator_graph(model, output_file="op_graph"):
+    nodes = {}
+    edges = []
+    named_modules = dict(model.named_modules(remove_duplicate=False))
+
+    for node in model.graph.nodes:
+        graph_node = {}
+
+        header = node.name
+        graph_node['name']   = node.name
+        graph_node['target'] = str(node.target)
+        graph_node['inputs'] = []
+        graph_node['weights'] = []
+
+        if isinstance(node.value, torch.Tensor):
+            header += f"&#92;n{str(tuple(node.value.shape))}"
+            graph_node['output'] = node.value.shape
+            if (dtype := node.meta.get("dtype", None)) is not None:
+                header += f"&#92;n{dtype}"
+        elif isinstance(node.value, (tuple, list)):
+            shape_str = ", ".join([str(tuple(t.shape)) for t in node.value])
+            graph_node['output'] = [t.shape for t in node.value]
+            header += f"&#92;n{shape_str}"
+
+            dtypes = [t.dtype for t in node.value]
+            if (dtype := node.meta.get("dtype", None)) is not None:
+                dtypes = [dt or dtypes[i] for i, dt in enumerate(dtype)]
+
+            if any(dtype not in [torch.float, torch.bfloat16] for dtype in dtypes):
+                header += f"&#92;n{', '.join([str(d) for d in dtypes])}"
+        else:
+            continue
+
+        body = None
+        if node.op == "call_module":
+            gm = named_modules[node.target]
+            if isinstance(gm, torch.fx.GraphModule):
+                body = "&#92;n".join([
+                    n.name for n in gm.graph.nodes if n.op == "call_function"
+                ])
+
+        # print("PRED")
+        # print(node.prev)
+        # if len(graph_node['inputs']) == 0:
+        #     graph_node['weights'] = graph_node['output']
+        # else:
+        #     graph_node['weights'] = [0]
+
+        nodes[node.name] = graph_node
+
+        users = list(node.users)
+        num_users = len(users)
+        for u in users:
+            edge = {}
+            edge['source'] = node.name
+            edge['destination'] = u.name
+            edge['size'] = math.prod(graph_node['output'])
+            # edge['tensor'] = graph_node['output']
+            edges.append(edge)
+
+    for node in model.graph.nodes:
+        for source in node.all_input_nodes:
+            nodes[node.name]['inputs'].append(nodes[str(source)]['output'])
+
+    for node in nodes.values():
+        if len(node['inputs']) == 0:
+            node['weights'] = node['output']
+        else:
+            node['weights'] = [0]
+
+    graph = {"nodes": list(nodes.values()), "edges": edges}
+
+    with open(output_file, 'w') as f:
+        json.dump(graph, f, indent=4)
 
 def gen_compute_graph(model, output_file="compute_graph", max_users=10):
     nodes = {}

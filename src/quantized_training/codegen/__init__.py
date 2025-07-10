@@ -14,6 +14,7 @@ __all__ = [
     "fuse_operator",
     "gen_code",
     "gen_compute_graph",
+    "gen_operator_graph",
     "get_conv_bn_layers",
     "pad_gemm_inputs_to_hardware_unroll_size",
     "pad_vit_embeddings_output",
